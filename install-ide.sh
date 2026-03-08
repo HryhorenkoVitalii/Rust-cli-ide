@@ -13,13 +13,30 @@ echo "  Helix + Zellij + Yazi"
 echo "================================"
 echo
 
+info "Installing packages..."
+if command -v pacman &>/dev/null; then
+    sudo pacman -S --needed --noconfirm helix zellij yazi python-lsp-server ruff python-debugpy
+elif command -v apt &>/dev/null; then
+    sudo apt update
+    sudo apt install -y snapd
+    sudo snap install helix --classic 2>/dev/null || warn "Install helix manually: https://helix-editor.com"
+    sudo snap install zellij --classic 2>/dev/null || warn "Install zellij manually: https://zellij.dev"
+    warn "Install yazi manually: https://yazi-rs.github.io/docs/installation"
+    pip3 install --user python-lsp-server ruff debugpy 2>/dev/null
+elif command -v dnf &>/dev/null; then
+    sudo dnf install -y helix zellij
+    warn "Install yazi manually: https://yazi-rs.github.io/docs/installation"
+    pip3 install --user python-lsp-server ruff debugpy 2>/dev/null
+else
+    warn "Unknown package manager. Install manually: helix, zellij, yazi, pylsp, ruff, debugpy"
+fi
+
 missing=()
 for cmd in helix zellij yazi; do
     command -v "$cmd" &>/dev/null || missing+=("$cmd")
 done
 if [ ${#missing[@]} -gt 0 ]; then
-    warn "Not found: ${missing[*]}"
-    warn "Install them before using the IDE"
+    warn "Still missing: ${missing[*]}"
     echo
 fi
 
