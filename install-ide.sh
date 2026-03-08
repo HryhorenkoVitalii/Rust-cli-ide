@@ -15,20 +15,45 @@ echo
 
 info "Installing packages..."
 if command -v pacman &>/dev/null; then
-    sudo pacman -S --needed --noconfirm helix zellij yazi python-lsp-server ruff python-debugpy
+    sudo pacman -S --needed --noconfirm helix zellij yazi zsh git curl python-lsp-server ruff python-debugpy
 elif command -v apt &>/dev/null; then
     sudo apt update
-    sudo apt install -y snapd
+    sudo apt install -y zsh git curl
     sudo snap install helix --classic 2>/dev/null || warn "Install helix manually: https://helix-editor.com"
     sudo snap install zellij --classic 2>/dev/null || warn "Install zellij manually: https://zellij.dev"
     warn "Install yazi manually: https://yazi-rs.github.io/docs/installation"
     pip3 install --user python-lsp-server ruff debugpy 2>/dev/null
 elif command -v dnf &>/dev/null; then
-    sudo dnf install -y helix zellij
+    sudo dnf install -y zsh git curl helix zellij
     warn "Install yazi manually: https://yazi-rs.github.io/docs/installation"
     pip3 install --user python-lsp-server ruff debugpy 2>/dev/null
 else
-    warn "Unknown package manager. Install manually: helix, zellij, yazi, pylsp, ruff, debugpy"
+    warn "Unknown package manager. Install manually: helix, zellij, yazi, zsh, pylsp, ruff, debugpy"
+fi
+
+# ── Oh My Zsh ──
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    info "Installing Oh My Zsh..."
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+else
+    info "Oh My Zsh already installed"
+fi
+
+# zsh plugins
+ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
+    info "Installing zsh-autosuggestions..."
+    git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+fi
+if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
+    info "Installing zsh-syntax-highlighting..."
+    git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+fi
+
+# Set default shell to zsh
+if [ "$SHELL" != "$(which zsh)" ]; then
+    info "Setting zsh as default shell..."
+    chsh -s "$(which zsh)" 2>/dev/null || warn "Run manually: chsh -s \$(which zsh)"
 fi
 
 missing=()
@@ -45,6 +70,24 @@ mkdir -p "$HOME/.config/helix"
 mkdir -p "$HOME/.config/zellij/layouts"
 mkdir -p "$HOME/.config/yazi"
 mkdir -p "$HOME/.local/bin"
+
+# ── Zsh config ──
+info "Writing .zshrc..."
+cat > "$HOME/.zshrc" << 'ZSHRC'
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="robbyrussell"
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+source $ZSH/oh-my-zsh.sh
+
+export PATH="$HOME/.local/bin:$PATH"
+export EDITOR="helix"
+
+alias ide='cd "${1:-.}" && zellij --layout ide'
+alias ll='ls -la'
+alias gs='git status'
+alias gp='git push'
+alias gc='git commit'
+ZSHRC
 
 # ── Helix config ──
 info "Writing Helix config..."
@@ -427,6 +470,7 @@ load_plugins {
 
 theme "catppuccin-mocha"
 pane_frames true
+default_shell "zsh"
 ZELLIJ_CONF
 
 cat > "$HOME/.config/zellij/layouts/ide.kdl" << 'ZELLIJ_LAYOUT'
@@ -532,7 +576,7 @@ YAZI_KEYS
 info "Writing scripts..."
 
 cat > "$HOME/.local/bin/hx-open" << 'SCRIPT'
-#!/bin/bash
+#!/bin/zsh
 [ -z "$1" ] && exit 1
 abs="$(realpath "$1" 2>/dev/null || echo "$1")"
 
@@ -547,18 +591,18 @@ fi
 SCRIPT
 
 cat > "$HOME/.local/bin/hx-run" << 'SCRIPT'
-#!/bin/bash
+#!/bin/zsh
 [ -z "$1" ] && exit 1
 abs="$(realpath "$1" 2>/dev/null || echo "$1")"
 project_dir="$(pwd)"
 
 if [ -f ".ide/run.sh" ]; then
-    cmd="cd '${project_dir}' && bash .ide/run.sh"
+    cmd="cd '${project_dir}' && zsh .ide/run.sh"
 else
     ext="${abs##*.}"
     case "$ext" in
         py)  cmd="cd '${project_dir}' && python3 '${abs}'" ;;
-        sh)  cmd="cd '${project_dir}' && bash '${abs}'" ;;
+        sh)  cmd="cd '${project_dir}' && zsh '${abs}'" ;;
         rs)  cmd="cd '${project_dir}' && cargo run" ;;
         js)  cmd="cd '${project_dir}' && node '${abs}'" ;;
         ts)  cmd="cd '${project_dir}' && npx ts-node '${abs}'" ;;
@@ -572,13 +616,13 @@ zellij action write-chars "$cmd"$'\r'
 SCRIPT
 
 cat > "$HOME/.local/bin/hx-debug" << 'SCRIPT'
-#!/bin/bash
+#!/bin/zsh
 [ -z "$1" ] && exit 1
 abs="$(realpath "$1" 2>/dev/null || echo "$1")"
 project_dir="$(pwd)"
 
 if [ -f ".ide/debug.sh" ]; then
-    cmd="cd '${project_dir}' && bash .ide/debug.sh"
+    cmd="cd '${project_dir}' && zsh .ide/debug.sh"
 else
     ext="${abs##*.}"
     case "$ext" in
@@ -593,7 +637,7 @@ zellij action write-chars "$cmd"$'\r'
 SCRIPT
 
 cat > "$HOME/.local/bin/term-cd" << 'SCRIPT'
-#!/bin/bash
+#!/bin/zsh
 dir="${1:-$(pwd)}"
 
 zellij action move-focus right
@@ -602,21 +646,11 @@ zellij action write-chars "cd '${dir}'"$'\r'
 SCRIPT
 
 cat > "$HOME/.local/bin/ide" << 'SCRIPT'
-#!/bin/bash
+#!/bin/zsh
 cd "${1:-.}" && zellij --layout ide
 SCRIPT
 
 chmod +x "$HOME/.local/bin"/{hx-open,hx-run,hx-debug,term-cd,ide}
-
-# ── PATH ──
-if ! echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
-    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-        if [ -f "$rc" ]; then
-            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rc"
-            info "Added ~/.local/bin to PATH in $(basename "$rc")"
-        fi
-    done
-fi
 
 echo
 info "Installation complete!"
